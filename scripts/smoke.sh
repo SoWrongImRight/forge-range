@@ -55,6 +55,18 @@ fi
 smoke "privesc SSH listening on 127.0.0.1:2222" \
     nc -z 127.0.0.1 2222
 
+# Multi-path validation — Stage 1 Foothold
+smoke "Stage 1A: /ping POST responds (command injection path)" \
+    bash -c "curl -fsS --max-time 5 -X POST http://127.0.0.1:8080/ping -d 'host=127.0.0.1' | grep -q '<pre>'"
+smoke "Stage 1B: /greet GET responds (SSTI path)" \
+    bash -c "curl -fsS --max-time 5 'http://127.0.0.1:8080/greet?name=test' | grep -qi 'hello'"
+
+# Multi-path validation — Stage 3 Lateral Movement
+smoke "Stage 3A: forge-internal reachable from forge-web (lateral path A)" \
+    docker exec forge-web curl -fsS --max-time 5 http://forge-internal:9090/health
+smoke "Stage 3B: forge-db port reachable from forge-privesc (lateral path B)" \
+    docker exec forge-privesc nc -z forge-db 5432
+
 echo "────────────────────────────────────────"
 echo "  Passed: $PASS   Failed: $FAIL"
 echo ""

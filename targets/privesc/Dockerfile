@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     netcat-openbsd \
     cron \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Create low-privilege lab user

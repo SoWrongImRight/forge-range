@@ -62,16 +62,47 @@ These users are inserted by `targets/db/init.sql`. Passwords are stored in plain
 
 ---
 
-## Credential Discovery Chain (Scenario 01)
+## Credential Discovery Paths (Scenario 01)
+
+### Path A — Admin Panel (`/admin`)
+
+Provides the full service registry in one request. Enables all lateral movement and privesc paths.
+
+| Credential | Enables |
+|------------|---------|
+| `app:SuperSecret1!` (DB) | Stage 3 Path B (psql from forge-privesc) |
+| `internal_lab_secret_do_not_reuse` (API token) | Stage 3 Path A alternative token |
+| `labuser:labpassword` (SSH) | Stage 3 Path B SSH login; Stage 4 entry point |
+
+### Path B — Backup Endpoint (`/backup`)
+
+Provides only the database connection string. Sufficient for Stage 3 Path B but does not give SSH or API credentials.
+
+| Credential | Enables |
+|------------|---------|
+| `app:SuperSecret1!` (DB) | Stage 3 Path B (psql from forge-privesc) |
+
+You will still need `/admin` to obtain `labuser:labpassword` before Stage 4.
+
+---
+
+## Multi-Path Attack Chains (Scenario 01)
 
 ```
-GET /robots.txt → finds /backup and /admin paths
-    ↓
-GET /backup → DB_URL with app:SuperSecret1! (database credentials)
-    ↓
-GET /admin → service registry with labuser:labpassword (SSH credentials)
-    ↓
-POST /ping (command injection) → reach forge-internal:9090/secret → FLAG_02
-    ↓
-SSH labuser@127.0.0.1:2222 → sudo python3 → root → FLAG_04
+GET /robots.txt → finds /admin and /backup
+        │
+        ├─ Path A: GET /admin → full service registry
+        │     labuser:labpassword  ──────────────────────► SSH 127.0.0.1:2222
+        │     internal_lab_secret  ──► Stage 3A alt token    │
+        │     app:SuperSecret1!    ──► Stage 3B psql          │ (on forge-privesc)
+        │                                                      ▼
+        └─ Path B: GET /backup → DB_URL                  forge-db psql
+              app:SuperSecret1!  ──► Stage 3B psql        → FLAG_03
+                                                               │
+                                                               ▼
+Stage 1 (either path): RCE in forge-web                  Stage 4 privesc
+        │                                                 → FLAG_04
+        └─ Stage 3A: curl forge-internal:9090/secret
+              X-Internal-Token: lab-bypass
+              → FLAG_02
 ```
