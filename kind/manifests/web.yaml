@@ -1,0 +1,54 @@
+---
+# Intentionally misconfigured k8s deployment for lab practice.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forge-web
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forge-web
+  template:
+    metadata:
+      labels:
+        app: forge-web
+    spec:
+      containers:
+        - name: web
+          image: forge-web:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FLAG_01
+              value: "FLAG{k8s_enum_success}"
+          # INTENTIONAL MISCONFIG: overly permissive security context
+          securityContext:
+            allowPrivilegeEscalation: true
+            runAsNonRoot: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forge-web
+spec:
+  type: NodePort
+  selector:
+    app: forge-web
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
+---
+# INTENTIONAL MISCONFIG: secret stored as env var, not mounted secret
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forge-config
+data:
+  db_host: forge-db
+  db_user: app
+  # Passwords should never be in ConfigMaps — intentional for lab
+  db_password: "SuperSecret1!"

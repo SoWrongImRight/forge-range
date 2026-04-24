@@ -1,0 +1,80 @@
+---
+# forge-range lab — intentionally vulnerable services for authorized self-study only.
+# Do NOT expose these services beyond localhost.
+
+networks:
+  public_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+  internal_net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.10.1.0/24
+
+services:
+
+  # ── Public attack surface ─────────────────────────────────────────────────
+  web:
+    build: targets/web
+    container_name: forge-web
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - public_net
+    environment:
+      - DB_HOST=db
+      - DB_USER=app
+      - DB_PASSWORD=SuperSecret1!   # intentional lab credential
+      - FLAG_01=FLAG{enum_the_web}
+    restart: unless-stopped
+
+  # ── Internal services (not directly reachable from attacker) ─────────────
+  internal:
+    build: targets/internal
+    container_name: forge-internal
+    networks:
+      - public_net
+      - internal_net
+    environment:
+      - SECRET_KEY=internal_lab_secret_do_not_reuse
+      - FLAG_02=FLAG{lateral_move_success}
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: forge-db
+    networks:
+      - internal_net
+    environment:
+      - POSTGRES_DB=appdb
+      - POSTGRES_USER=app
+      - POSTGRES_PASSWORD=SuperSecret1!
+      - FLAG_03=FLAG{db_creds_found}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./targets/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+
+  # ── Privilege escalation Linux box ───────────────────────────────────────
+  privesc:
+    build: targets/privesc
+    container_name: forge-privesc
+    ports:
+      - "127.0.0.1:2222:22"   # SSH exposed on loopback only for lab access
+    networks:
+      - public_net     # required for host port publishing (internal_net blocks it)
+      - internal_net
+    cap_add:
+      - SYS_PTRACE          # required for some privesc demos
+    security_opt:
+      - seccomp:unconfined  # intentional for lab practice
+    environment:
+      - FLAG_04=FLAG{root_privesc_complete}
+    restart: unless-stopped
+
+volumes:
+  db_data:
