@@ -85,11 +85,21 @@ note_pass "docker daemon reachable"
 
 run_check "docker compose configuration parses" docker compose config -q
 
-for container in forge-web forge-internal forge-db forge-privesc; do
+for container in forge-web forge-internal forge-db forge-privesc forge-operator forge-proctor; do
     run_check "$container container running" container_running "$container"
 done
 
+run_check "forge-operator attached to public_net" container_on_network forge-operator public_net
+run_check "forge-operator attached to internal_net" container_on_network forge-operator internal_net
+run_check "forge-operator DNS resolves forge-web" docker exec forge-operator getent hosts forge-web
+run_check "forge-operator DNS resolves forge-db" docker exec forge-operator getent hosts forge-db
+run_check "forge-operator DNS resolves forge-internal" docker exec forge-operator getent hosts forge-internal
+run_check "forge-operator can reach forge-web HTTP" docker exec forge-operator curl -fsS --max-time 5 http://forge-web:8080
 run_check "forge-web published port bound to localhost" port_binding_is_localhost forge-web "8080/tcp"
+run_check "forge-proctor published port bound to localhost" port_binding_is_localhost forge-proctor "8090/tcp"
+run_check "forge-proctor health endpoint reachable" curl -fsS --max-time 5 http://127.0.0.1:8090/health
+run_check "forge-proctor not running in privileged mode" \
+    bash -c '[ "$(docker inspect --format "{{.HostConfig.Privileged}}" forge-proctor 2>/dev/null)" = "false" ]'
 run_check "forge-privesc SSH port bound to localhost" port_binding_is_localhost forge-privesc "22/tcp"
 run_check "forge-web attached to public_net" container_on_network forge-web public_net
 run_check "forge-internal attached to public_net" container_on_network forge-internal public_net

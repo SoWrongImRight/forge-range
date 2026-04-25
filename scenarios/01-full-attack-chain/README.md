@@ -19,6 +19,20 @@ Work through a complete end-to-end attack chain against the local lab. Multiple 
 
 ---
 
+## Using Proctor Mode
+
+Track your flag submissions and score in the local scoring UI:
+
+1. Start the lab with `make up`.
+2. Open `http://127.0.0.1:8090` in a browser.
+3. Create a local account (no email, no cloud — local SQLite only).
+4. Submit flags as you find them. Points are awarded per valid flag.
+5. False flags may appear in the lab and will be recorded as decoys — no points awarded.
+6. Do not use Proctor as an attack target. It is a training utility, not a vulnerable service.
+7. Run `make proctor-reset` to wipe scores between timed runs.
+
+---
+
 ## Scope and Safety Boundary
 
 **In scope:** All services listed below. All actions must stay local to your workstation.

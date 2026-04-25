@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<p>Operator: <strong>{{ username }}</strong></p>
+
+<div class="score-row">
+  <div class="score-box">
+    <div class="score-big score-green">{{ total_score }}</div>
+    <div class="score-label">Your Score</div>
+  </div>
+  <div class="score-box">
+    <div class="score-big score-blue">{{ max_score }}</div>
+    <div class="score-label">Max Score</div>
+  </div>
+  <div class="score-box">
+    <div class="score-big score-green">{{ flags | selectattr('solved') | list | length }} / {{ flags | length }}</div>
+    <div class="score-label">Flags Solved</div>
+  </div>
+</div>
+
+<h2>Flag Progress</h2>
+<table>
+  <thead>
+    <tr><th>Label</th><th>Target</th><th>Stage</th><th>Points</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for f in flags %}
+    <tr>
+      <td>{{ f.label }}</td>
+      <td>{{ f.target }}</td>
+      <td>{{ f.stage }}</td>
+      <td>{{ f.points }}</td>
+      <td>
+        {% if f.solved %}
+          <span class="solved">&#10003; Solved</span>
+        {% else %}
+          <span class="unsolved">&#8212; Unsolved</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Recent Submissions</h2>
+{% if recent %}
+<table>
+  <thead>
+    <tr><th>Preview</th><th>Status</th><th>Points</th><th>Time (UTC)</th></tr>
+  </thead>
+  <tbody>
+    {% for s in recent %}
+    <tr>
+      <td><code>{{ s['submitted_value_preview'] }}</code></td>
+      <td><span class="s-{{ s['status'] }}">{{ s['status'] }}</span></td>
+      <td>{{ s['points_awarded'] }}</td>
+      <td>{{ s['created_at'][:19] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="hint">No submissions yet. <a href="/submit">Submit a flag</a>.</p>
+{% endif %}
+
+<p><a href="/submit">Submit a flag &#8594;</a></p>
+{% endblock %}

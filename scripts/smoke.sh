@@ -31,6 +31,18 @@ smoke "forge-db container running" \
     bash -c '[ "$(docker inspect --format "{{.State.Running}}" forge-db 2>/dev/null)" = "true" ]'
 smoke "forge-privesc container running" \
     bash -c '[ "$(docker inspect --format "{{.State.Running}}" forge-privesc 2>/dev/null)" = "true" ]'
+smoke "forge-operator container running" \
+    bash -c '[ "$(docker inspect --format "{{.State.Running}}" forge-operator 2>/dev/null)" = "true" ]'
+smoke "forge-proctor container running" \
+    bash -c '[ "$(docker inspect --format "{{.State.Running}}" forge-proctor 2>/dev/null)" = "true" ]'
+
+# Operator container network connectivity
+smoke "forge-operator DNS resolves forge-web" \
+    docker exec forge-operator getent hosts forge-web
+smoke "forge-operator DNS resolves forge-internal" \
+    docker exec forge-operator getent hosts forge-internal
+smoke "forge-operator can reach forge-web HTTP" \
+    docker exec forge-operator curl -fsS --max-time 5 http://forge-web:8080
 
 # Web target reachable and returns expected content
 smoke "web root returns HTML" \
@@ -43,6 +55,12 @@ smoke "web /admin returns service registry (lab intentional)" \
     bash -c "curl -fsS --max-time 5 http://127.0.0.1:8080/admin | grep -q 'labpassword'"
 smoke "web /flag returns a flag value" \
     bash -c "curl -fsS --max-time 5 http://127.0.0.1:8080/flag | grep -q 'FLAG{'"
+
+# Proctor scoring UI
+smoke "proctor /health returns ok" \
+    bash -c "curl -fsS --max-time 5 http://127.0.0.1:8090/health | grep -q 'ok'"
+smoke "proctor root reachable" \
+    bash -c "curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/ | grep -qE '^(200|302|303)'"
 
 # Safety boundary: internal service must NOT be directly reachable from host
 if curl -fsS --max-time 2 http://127.0.0.1:9090/health >/dev/null 2>&1; then

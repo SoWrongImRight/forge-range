@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Submit Flag</h1>
+<p class="hint">Paste the flag value exactly as found. Leading and trailing whitespace is trimmed automatically.</p>
+<form class="main-form" action="/submit" method="post">
+  <label for="flag_value">Flag Value</label>
+  <input type="text" id="flag_value" name="flag_value" placeholder="FLAG{...}" required autocomplete="off">
+  <input type="submit" value="Submit Flag">
+</form>
+<p class="hint">
+  Submitted flag values are hashed (SHA-256). Only the first 8 characters are stored as a display preview.
+  The full value is never saved in plaintext.
+</p>
+<p><a href="/dashboard">&#8592; Back to Dashboard</a></p>
+{% endblock %}

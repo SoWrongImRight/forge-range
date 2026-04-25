@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Create Local Account</h1>
+<p class="hint">
+  This account exists only in your local lab SQLite database.
+  No email, no cloud, no real identity system.
+</p>
+<form class="main-form" action="/register" method="post">
+  <label for="username">Username (max 32 characters)</label>
+  <input type="text" id="username" name="username" required maxlength="32" autocomplete="username">
+  <label for="password">Password</label>
+  <input type="password" id="password" name="password" required autocomplete="new-password">
+  <input type="submit" value="Create Account">
+</form>
+<p class="hint">Already have an account? <a href="/login">Login here</a>.</p>
+{% endblock %}

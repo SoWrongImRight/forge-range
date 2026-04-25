@@ -84,6 +84,46 @@ This deletes the cluster entirely. Run `make kind-up` again to recreate it from 
 
 ---
 
+## Operator Pod — Internal Enumeration Inside the Cluster
+
+The same internal-enumeration workflow available in Docker Compose (`make operator-shell`) has a Kubernetes equivalent: an ephemeral `netshoot` pod. Launch it with:
+
+```bash
+kubectl run forge-operator \
+  --image=nicolaka/netshoot \
+  --restart=Never \
+  -it --rm -- bash
+```
+
+The `--rm` flag ensures the pod is deleted when you exit the shell. There is no persistent pod left behind.
+
+### Inside the operator pod
+
+```bash
+# DNS resolution
+nslookup forge-web
+nslookup forge-internal
+
+# HTTP reachability (service names are Kubernetes Service names)
+curl http://forge-web
+
+# Port scan cluster-internal services
+nmap forge-web
+```
+
+### Safety rules for the operator pod
+
+| Constraint | Why |
+|------------|-----|
+| No `hostNetwork: true` | Prevents the pod from binding to the node's host network |
+| No `privileged: true` | Prevents container breakout |
+| Ephemeral (`--rm`) | No persistent pod; no attack surface left after session |
+| No NodePort for operator | Internal enumeration only; nothing published outside the cluster |
+
+The operator pod is strictly internal. It does not change the cluster's external exposure.
+
+---
+
 ## Scenario 06 — Kubernetes Enumeration
 
 See [scenarios/06-kubernetes/README.md](../scenarios/06-kubernetes/README.md) for the guided exercise using this cluster.

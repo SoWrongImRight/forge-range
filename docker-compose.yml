@@ -76,5 +76,35 @@ services:
       - FLAG_04=FLAG{root_privesc_complete}
     restart: unless-stopped
 
+  # ── Operator container (internal enumeration, no exposed ports) ──────────
+  operator:
+    image: nicolaka/netshoot
+    container_name: forge-operator
+    command: sleep infinity
+    networks:
+      - public_net
+      - internal_net
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./targets/operator/.bashrc:/root/.bashrc:ro
+    restart: unless-stopped
+
+  # ── Proctor (local scoring UI — not a target) ────────────────────────────
+  proctor:
+    build:
+      context: ./targets/proctor
+    container_name: forge-proctor
+    environment:
+      - PROCTOR_DB_PATH=/data/proctor.db
+      - PROCTOR_SESSION_SECRET=forge-range-local-proctor-secret-change-me
+    volumes:
+      - proctor_data:/data
+    ports:
+      - "127.0.0.1:8090:8090"
+    networks:
+      - public_net
+    restart: unless-stopped
+
 volumes:
   db_data:
+  proctor_data:

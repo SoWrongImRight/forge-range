@@ -1,4 +1,4 @@
-.PHONY: help up down reset reset-docker reset-kind reset-all verify smoke kind-up kind-down kind-load logs ps scenarios
+.PHONY: help up down reset reset-docker reset-kind reset-all verify smoke kind-up kind-down kind-load logs ps scenarios operator-up operator-shell operator-down operator-recon proctor-url proctor-reset
 
 CLUSTER_NAME := forge-range
 KIND_CONFIG  := kind/cluster.yaml
@@ -58,6 +58,26 @@ kind-load: ## Load local Docker images into kind cluster
 		echo "Loading $$img into kind..."; \
 		kind load docker-image $$img --name $(CLUSTER_NAME); \
 	done
+
+operator-up: ## Start the operator container (internal enumeration, no exposed ports)
+	docker compose up -d operator
+
+operator-shell: ## Open a shell in the operator container
+	docker exec -it forge-operator bash
+
+operator-down: ## Remove the operator container
+	docker compose rm -sf operator
+
+operator-recon: ## Run the baseline recon script inside the operator container
+	docker exec forge-operator /bin/bash /scripts/operator-recon.sh
+
+proctor-url: ## Print the local Proctor scoring UI URL
+	@echo "Forge Proctor: http://127.0.0.1:8090"
+
+proctor-reset: ## Reset Proctor — wipes all scores and accounts, keeps other lab state
+	docker compose stop proctor
+	docker volume rm forge-range_proctor_data || true
+	docker compose up -d proctor
 
 scenarios: ## List available attack scenarios
 	@echo ""

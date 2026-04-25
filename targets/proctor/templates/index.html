@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>ForgeRange Proctor</h1>
+<p>Local scoring and progress tracking for the ForgeRange lab.</p>
+<p>
+  <a href="/register">Create a local account</a> to start tracking your flag submissions,
+  or <a href="/login">log in</a> if you already have one.
+</p>
+<p class="hint">
+  This service is local-only. It is not part of the attack path and is not intentionally vulnerable.
+  Do not target it in scenarios. See <code>docs/proctor-mode.md</code> for details.
+</p>
+{% endblock %}

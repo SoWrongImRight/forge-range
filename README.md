@@ -22,6 +22,18 @@ make up
 make verify
 ```
 
+### Proctor Mode
+
+ForgeRange includes a local scoring UI at `http://127.0.0.1:8090`:
+
+- Create a local account (no email, no cloud, no internet dependency).
+- Submit flags as you discover them during scenarios.
+- Earn points for valid flags; false flags are recorded as decoys with no points.
+- Track your progress and score across multiple runs.
+- Reset scores independently with `make proctor-reset` without disturbing lab targets.
+
+Proctor is a training utility. It is not part of the attack path and is not intentionally vulnerable. See [docs/proctor-mode.md](docs/proctor-mode.md) for full details.
+
 ### Verification
 
 `make verify` checks:

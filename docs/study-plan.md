@@ -18,6 +18,8 @@ A practical progression for using ForgeRange as an OSCP preparation lab. Each ph
 
 **OSCP skills:** Lab setup, tool verification, reading documentation before touching targets.
 
+- Open `http://127.0.0.1:8090`, create a local Proctor account, and familiarize yourself with the scoring interface.
+
 **Done when:** `make verify` passes clean and you can explain the network topology without notes.
 
 ---
@@ -31,8 +33,9 @@ A practical progression for using ForgeRange as an OSCP preparation lab. Each ph
 - Run through phases 1–7 of the scenario using only the hints.
 - Capture all four flags.
 - Document your findings in a plain text file as you go (practice report writing).
+- Submit each flag to Proctor (`http://127.0.0.1:8090/submit`) as you discover it. Compare your score per run to track improvement.
 - Reset the lab and repeat the chain from scratch without notes.
-- On the second run, time yourself.
+- On the second run, time yourself. Use `make proctor-reset` between timed runs to start with a fresh scoreboard.
 
 **OSCP skills:**
 - HTTP enumeration (robots.txt, hidden endpoints)

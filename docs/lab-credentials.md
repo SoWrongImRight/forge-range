@@ -62,6 +62,16 @@ These users are inserted by `targets/db/init.sql`. Passwords are stored in plain
 
 ---
 
+## Proctor Service (`forge-proctor`)
+
+`forge-proctor` has **no default account**. Create a local account on first use at `http://127.0.0.1:8090/register`.
+
+- No credentials are seeded or documented here — you choose your own username and password at registration.
+- Passwords are hashed with `pbkdf2_hmac` (SHA-256, 260,000 iterations) and a random per-user salt. Plaintext passwords are never stored.
+- The proctor account has no bearing on any lab scenario. It is a local training utility only.
+
+---
+
 ## Credential Discovery Paths (Scenario 01)
 
 ### Path A — Admin Panel (`/admin`)

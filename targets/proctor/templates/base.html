@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeRange Proctor</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:monospace;background:#0d1117;color:#e6edf3;margin:0;padding:0}
+  header{background:#161b22;border-bottom:1px solid #30363d;padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
+  header a{color:#58a6ff;text-decoration:none;margin-left:16px}
+  header a:hover{text-decoration:underline}
+  .brand{color:#e6edf3;font-weight:bold;font-size:1.1em}
+  nav form{display:inline}
+  nav button{background:transparent;color:#f85149;border:none;cursor:pointer;font-family:monospace;font-size:1em;margin-left:16px;padding:0}
+  main{max-width:860px;margin:32px auto;padding:0 24px}
+  h1{color:#58a6ff;margin-top:0}
+  h2{color:#79c0ff;border-bottom:1px solid #30363d;padding-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:16px 0}
+  th{background:#161b22;color:#8b949e;text-align:left;padding:8px 12px;font-size:0.9em}
+  td{padding:8px 12px;border-bottom:1px solid #21262d}
+  .solved{color:#3fb950}
+  .unsolved{color:#8b949e}
+  .s-valid{color:#3fb950}
+  .s-false_flag{color:#d29922}
+  .s-duplicate_valid{color:#8b949e}
+  .s-invalid{color:#f85149}
+  form.main-form{max-width:400px}
+  label{display:block;margin-top:14px;color:#8b949e;font-size:0.9em}
+  input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;font-family:monospace;font-size:1em}
+  input[type=submit],button.submit{margin-top:16px;padding:8px 20px;background:#238636;color:#fff;border:none;cursor:pointer;font-family:monospace;font-size:1em}
+  input[type=submit]:hover,button.submit:hover{background:#2ea043}
+  .flash{padding:10px 14px;margin:12px 0;border-left:4px solid}
+  .flash-success{border-color:#3fb950;background:#0d2f1a;color:#3fb950}
+  .flash-error{border-color:#f85149;background:#2d1017;color:#f85149}
+  .flash-warn{border-color:#d29922;background:#2d1f00;color:#d29922}
+  .flash-info{border-color:#58a6ff;background:#0d1f36;color:#58a6ff}
+  .score-row{display:flex;gap:20px;flex-wrap:wrap;margin:16px 0}
+  .score-box{background:#161b22;border:1px solid #30363d;padding:20px;min-width:140px;text-align:center}
+  .score-big{font-size:2.4em;font-weight:bold}
+  .score-green{color:#3fb950}
+  .score-blue{color:#79c0ff}
+  .score-label{color:#8b949e;font-size:0.85em;margin-top:4px}
+  .hint{color:#8b949e;font-size:0.85em}
+  a{color:#58a6ff}
+  a:hover{text-decoration:underline}
+  code{background:#161b22;padding:2px 6px;border-radius:3px;font-family:monospace}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">ForgeRange Proctor</span>
+  <nav>
+    {% if user_id %}
+      <a href="/dashboard">Dashboard</a>
+      <a href="/submit">Submit Flag</a>
+      <form action="/logout" method="post">
+        <button type="submit">Logout</button>
+      </form>
+    {% else %}
+      <a href="/login">Login</a>
+      <a href="/register">Register</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+  {% for f in flashes %}
+    <div class="flash flash-{{ f.cat }}">{{ f.msg }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
