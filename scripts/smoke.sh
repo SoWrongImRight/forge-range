@@ -85,6 +85,14 @@ smoke "Stage 3A: forge-internal reachable from forge-web (lateral path A)" \
 smoke "Stage 3B: forge-db port reachable from forge-privesc (lateral path B)" \
     docker exec forge-privesc nc -z forge-db 5432
 
+# Optional V2 Kubernetes scenario checks (only when kind cluster is running)
+if command -v kind >/dev/null 2>&1 && kind get clusters 2>/dev/null | grep -qx "forge-range"; then
+    smoke "V2 web health endpoint reachable (:18080)" \
+        bash -c "curl -fsS --max-time 10 http://127.0.0.1:18080/health | grep -q 'ok'"
+    smoke "V2 web root reachable (:18080)" \
+        bash -c "curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/ | grep -qE '^(200|302|303)'"
+fi
+
 echo "────────────────────────────────────────"
 echo "  Passed: $PASS   Failed: $FAIL"
 echo ""

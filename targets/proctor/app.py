@@ -19,10 +19,15 @@ DB_PATH = os.environ.get("PROCTOR_DB_PATH", "/data/proctor.db")
 SESSION_SECRET = os.environ.get("PROCTOR_SESSION_SECRET", "forge-range-local-proctor-secret-change-me")
 
 _FLAG_SEEDS = [
+    # V1 — Docker Compose scenario (Scenario 01: Full Attack Chain)
     ("FLAG{enum_the_web}", "Enumeration Flag", "forge-web", "Stage 0 / Enumeration", 10),
     ("FLAG{lateral_move_success}", "Internal API Flag", "forge-internal", "Stage 3 / Lateral Movement", 25),
     ("FLAG{db_creds_found}", "Database Flag", "forge-db", "Stage 3 / Lateral Movement", 25),
     ("FLAG{root_privesc_complete}", "Root Privilege Escalation Flag", "forge-privesc", "Stage 4 / Privilege Escalation", 40),
+    # V2 — Kubernetes Pivot scenario (Scenario 02; optional — requires make kind-up)
+    ("FLAG{k8s_web_foothold}", "Kubernetes Web Foothold", "forge-k8s-web", "V2 / Pod Foothold", 20),
+    ("FLAG{k8s_internal_service}", "Kubernetes Internal Service", "forge-k8s-internal", "V2 / Service Discovery", 30),
+    ("FLAG{k8s_service_account_discovery}", "Kubernetes Service Account Discovery", "forge-k8s-web", "V2 / Service Account Discovery", 30),
 ]
 
 _FALSE_FLAG_SEEDS = [

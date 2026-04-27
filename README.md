@@ -22,6 +22,23 @@ make up
 make verify
 ```
 
+## V2 Kubernetes Scenario
+
+Scenario 02 adds an optional Kubernetes layer using `kind`:
+
+- **Optional** — Docker Scenario 01 continues to work unchanged.
+- **Started with** `make kind-up` — creates the cluster, builds images, deploys the scenario.
+- **Web entry point:** `http://127.0.0.1:18080` (loopback only; NodePort on kind cluster)
+- **Scored in Proctor Mode** — submit V2 flags at `http://127.0.0.1:8090` (80 additional points)
+- **Requires** `kind` and `kubectl` on your `PATH`
+
+```bash
+make kind-up       # create cluster, build and load images, deploy scenario
+make kind-verify   # confirm namespace, pods, services, and web health
+```
+
+See [scenarios/02-kubernetes-pivot/README.md](scenarios/02-kubernetes-pivot/README.md) and [kind/README.md](kind/README.md) for details.
+
 ### Proctor Mode
 
 ForgeRange includes a local scoring UI at `http://127.0.0.1:8090`:

@@ -54,11 +54,26 @@ These users are inserted by `targets/db/init.sql`. Passwords are stored in plain
 
 ---
 
-## Optional kind Cluster
+## V2 Kubernetes Pivot — kind Cluster (Scenario 02; optional)
 
-| Item | Value | Where It Appears | Used For |
-|------|-------|-----------------|---------|
-| `db_password` in ConfigMap | `SuperSecret1!` | `kind/manifests/web.yaml` | Intentional bad practice: credentials in ConfigMap instead of Secret |
+### forge-k8s-web (`targets/k8s-web`)
+
+| Item | Value | Where It Appears | Used For | Scenario |
+|------|-------|-----------------|---------|---------|
+| FLAG_K8S_01 | `FLAG{k8s_web_foothold}` | `kind/manifests/web.yaml`, `/flag` endpoint | Pod foothold flag — readable via RCE or `/flag` | Scenario 02 — Stage 1 |
+
+### forge-k8s-internal (`targets/k8s-internal`)
+
+| Item | Value | Where It Appears | Used For | Scenario |
+|------|-------|-----------------|---------|---------|
+| FLAG_K8S_02 | `FLAG{k8s_internal_service}` | `kind/manifests/internal-api.yaml`, `/secret` endpoint | Internal service discovery flag | Scenario 02 — Stage 3 |
+
+### forge-k8s-config ConfigMap (intentional anti-pattern)
+
+| Item | Value | Where It Appears | Used For | Scenario |
+|------|-------|-----------------|---------|---------|
+| `discovery_flag` | `FLAG{k8s_service_account_discovery}` | `kind/manifests/configmap.yaml`, Kubernetes API | Service account enumeration flag — requires mounted token to read | Scenario 02 — Stage 4 |
+| `internal_service_host` | `forge-k8s-internal.forge-k8s.svc.cluster.local` | `kind/manifests/configmap.yaml` | Internal service DNS — intentionally stored in ConfigMap | Scenario 02 — Stage 2 |
 
 ---
 

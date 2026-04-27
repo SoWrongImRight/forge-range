@@ -1,0 +1,34 @@
+---
+# Service account used by the web pod.
+# The mounted token allows querying the Kubernetes API — an intentional lab misconfig.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forge-k8s-web-sa
+  namespace: forge-k8s
+---
+# Limited role: read-only access to pods and configmaps in forge-k8s only.
+# No cluster-admin. No cross-namespace access.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: forge-k8s-reader
+  namespace: forge-k8s
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: forge-k8s-web-sa-binding
+  namespace: forge-k8s
+subjects:
+  - kind: ServiceAccount
+    name: forge-k8s-web-sa
+    namespace: forge-k8s
+roleRef:
+  kind: Role
+  name: forge-k8s-reader
+  apiGroup: rbac.authorization.k8s.io

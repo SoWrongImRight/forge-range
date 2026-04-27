@@ -11,8 +11,14 @@ nodes:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
     extraPortMappings:
+      # Legacy kind NodePort (Scenario 06 placeholder — not used in V2)
       - containerPort: 30080
         hostPort: 30080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      # V2 Kubernetes Pivot scenario — web NodePort
+      - containerPort: 30180
+        hostPort: 18080
         listenAddress: "127.0.0.1"
         protocol: TCP
   - role: worker

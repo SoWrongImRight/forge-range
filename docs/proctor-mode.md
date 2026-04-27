@@ -68,13 +68,28 @@ Passwords are hashed with `pbkdf2_hmac` (SHA-256, 260,000 iterations, random per
 
 ## Scoring Table
 
+### V1 — Docker Compose Scenario (Scenario 01: Full Attack Chain)
+
 | Flag | Label | Target | Stage | Points |
 |------|-------|--------|-------|--------|
 | `FLAG{enum_the_web}` | Enumeration Flag | `forge-web` | Stage 0 / Enumeration | 10 |
 | `FLAG{lateral_move_success}` | Internal API Flag | `forge-internal` | Stage 3 / Lateral Movement | 25 |
 | `FLAG{db_creds_found}` | Database Flag | `forge-db` | Stage 3 / Lateral Movement | 25 |
 | `FLAG{root_privesc_complete}` | Root Privilege Escalation Flag | `forge-privesc` | Stage 4 / Privilege Escalation | 40 |
-| **Total** | | | | **100** |
+| **V1 Total** | | | | **100** |
+
+### V2 — Kubernetes Pivot Scenario (Scenario 02; optional — requires `make kind-up`)
+
+| Flag | Label | Target | Stage | Points |
+|------|-------|--------|-------|--------|
+| `FLAG{k8s_web_foothold}` | Kubernetes Web Foothold | `forge-k8s-web` | V2 / Pod Foothold | 20 |
+| `FLAG{k8s_internal_service}` | Kubernetes Internal Service | `forge-k8s-internal` | V2 / Service Discovery | 30 |
+| `FLAG{k8s_service_account_discovery}` | Kubernetes Service Account Discovery | `forge-k8s-web` | V2 / Service Account Discovery | 30 |
+| **V2 Total** | | | | **80** |
+
+**Combined maximum score (V1 + V2): 180 points**
+
+> V2 flags appear in the dashboard once Proctor restarts with the updated image (or if your existing `proctor_data` volume pre-dates V2, run `make proctor-reset` to force a clean DB seed that includes the V2 flags). Existing V1 submissions and accounts are preserved when flags are added at startup — no data is lost unless you explicitly run `make proctor-reset`.
 
 ---
 
@@ -157,7 +172,7 @@ Scores, accounts, and submission history persist in the named Docker volume `pro
 
 ---
 
-## Relationship to Operator Mode and Scenario 01
+## Relationship to Operator Mode and Scenarios
 
 | Tool | Purpose | How to access |
 |------|---------|---------------|
@@ -166,7 +181,7 @@ Scores, accounts, and submission history persist in the named Docker volume `pro
 
 These tools are complementary. Use the operator container to practice enumeration; use Proctor to record your findings and measure progress.
 
-Neither tool is part of Scenario 01's attack path. Do not treat `forge-proctor` as an attack target.
+Neither tool is part of Scenario 01's or Scenario 02's attack path. Do not treat `forge-proctor` as an attack target.
 
 ---
 

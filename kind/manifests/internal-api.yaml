@@ -1,0 +1,47 @@
+---
+# V2 Kubernetes internal API — forge-k8s namespace, ClusterIP only (not reachable from host).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forge-k8s-internal
+  namespace: forge-k8s
+  labels:
+    app: forge-k8s-internal
+    forge-range/scenario: v2-kubernetes-pivot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forge-k8s-internal
+  template:
+    metadata:
+      labels:
+        app: forge-k8s-internal
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: internal
+          image: forge-k8s-internal:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+          env:
+            - name: FLAG_K8S_02
+              value: "FLAG{k8s_internal_service}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+---
+# ClusterIP — not reachable from the host, only from within the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: forge-k8s-internal
+  namespace: forge-k8s
+spec:
+  type: ClusterIP
+  selector:
+    app: forge-k8s-internal
+  ports:
+    - port: 5000
+      targetPort: 5000

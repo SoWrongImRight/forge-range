@@ -122,12 +122,37 @@ if command -v kind >/dev/null 2>&1; then
         note_pass "kind cluster forge-range exists"
         if command -v kubectl >/dev/null 2>&1; then
             note_pass "optional tool present: kubectl"
-            run_check "kubectl can reach kind-forge-range context" kubectl cluster-info --context kind-forge-range
+            run_check "kubectl can reach kind-forge-range context" \
+                kubectl cluster-info --context kind-forge-range
+            run_check "namespace forge-k8s exists" \
+                kubectl get namespace forge-k8s
+            run_check "forge-k8s-web pod running" \
+                bash -c 'kubectl get pods -n forge-k8s -l app=forge-k8s-web \
+                    --field-selector=status.phase=Running --no-headers 2>/dev/null | grep -q .'
+            run_check "forge-k8s-internal pod running" \
+                bash -c 'kubectl get pods -n forge-k8s -l app=forge-k8s-internal \
+                    --field-selector=status.phase=Running --no-headers 2>/dev/null | grep -q .'
+            run_check "forge-k8s-web service exists" \
+                kubectl get svc forge-k8s-web -n forge-k8s
+            run_check "forge-k8s-internal service exists" \
+                kubectl get svc forge-k8s-internal -n forge-k8s
+            run_check "forge-k8s-internal is ClusterIP (not exposed to host)" \
+                bash -c 'kubectl get svc forge-k8s-internal -n forge-k8s \
+                    -o jsonpath="{.spec.type}" 2>/dev/null | grep -qx "ClusterIP"'
+            run_check "V2 web health endpoint reachable at 127.0.0.1:18080" \
+                curl -fsS --max-time 10 http://127.0.0.1:18080/health
+            run_check "forge-k8s-web pod not running with hostNetwork" \
+                bash -c '[ "$(kubectl get pod -n forge-k8s -l app=forge-k8s-web \
+                    -o jsonpath="{.items[0].spec.hostNetwork}" 2>/dev/null)" != "true" ]'
+            run_check "forge-k8s-web pod not privileged" \
+                bash -c '[ "$(kubectl get pod -n forge-k8s -l app=forge-k8s-web \
+                    -o jsonpath="{.items[0].spec.containers[0].securityContext.privileged}" \
+                    2>/dev/null)" != "true" ]'
         else
             note_warn "kubectl not installed; skipping cluster reachability checks"
         fi
     else
-        note_warn "kind cluster forge-range not present; skipping cluster checks"
+        note_warn "kind cluster forge-range not present; skipping cluster checks (run make kind-up to start V2 scenario)"
     fi
 else
     note_warn "kind not installed; skipping optional cluster checks"

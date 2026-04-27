@@ -1,4 +1,4 @@
-.PHONY: help up down reset reset-docker reset-kind reset-all verify smoke kind-up kind-down kind-load logs ps scenarios operator-up operator-shell operator-down operator-recon proctor-url proctor-reset
+.PHONY: help up down reset reset-docker reset-kind reset-all verify smoke kind-up kind-down kind-load kind-verify logs ps scenarios operator-up operator-shell operator-down operator-recon proctor-url proctor-reset
 
 CLUSTER_NAME := forge-range
 KIND_CONFIG  := kind/cluster.yaml
@@ -46,18 +46,51 @@ logs: ## Follow Docker Compose logs for all services
 ps: ## Show status of all lab containers
 	docker compose ps
 
-kind-up: ## Create local kind Kubernetes cluster
-	kind create cluster --name $(CLUSTER_NAME) --config $(KIND_CONFIG)
+kind-up: ## Create kind cluster, build and load V2 images, deploy Kubernetes pivot scenario
+	@if ! kind get clusters 2>/dev/null | grep -qx "$(CLUSTER_NAME)"; then \
+		kind create cluster --name $(CLUSTER_NAME) --config $(KIND_CONFIG); \
+	else \
+		echo "kind cluster $(CLUSTER_NAME) already exists; skipping creation."; \
+	fi
 	kubectl cluster-info --context kind-$(CLUSTER_NAME)
+	docker build -t forge-k8s-web:latest targets/k8s-web
+	docker build -t forge-k8s-internal:latest targets/k8s-internal
+	kind load docker-image forge-k8s-web:latest --name $(CLUSTER_NAME)
+	kind load docker-image forge-k8s-internal:latest --name $(CLUSTER_NAME)
+	kubectl apply -f kind/manifests/namespace.yaml
+	kubectl apply -f kind/manifests/rbac.yaml
+	kubectl apply -f kind/manifests/configmap.yaml
+	kubectl apply -f kind/manifests/web.yaml
+	kubectl apply -f kind/manifests/internal-api.yaml
+	kubectl rollout status deployment/forge-k8s-web -n forge-k8s --timeout=120s
+	kubectl rollout status deployment/forge-k8s-internal -n forge-k8s --timeout=120s
+	@echo ""
+	@echo "V2 Kubernetes scenario ready: http://127.0.0.1:18080"
+	@echo "Run 'make kind-verify' to validate the deployment."
 
 kind-down: ## Destroy kind Kubernetes cluster
 	kind delete cluster --name $(CLUSTER_NAME)
 
-kind-load: ## Load local Docker images into kind cluster
+kind-load: ## Load Docker Compose images into kind cluster (see kind-up for V2 images)
 	@for img in $$(docker compose config --images); do \
 		echo "Loading $$img into kind..."; \
 		kind load docker-image $$img --name $(CLUSTER_NAME); \
 	done
+
+kind-verify: ## Verify V2 Kubernetes scenario namespace, pods, services, and web health
+	@echo ""
+	@echo "forge-range :: kind-verify"
+	@echo "────────────────────────────────────────"
+	kubectl get namespace forge-k8s
+	kubectl get pods -n forge-k8s
+	kubectl get svc -n forge-k8s
+	@echo ""
+	@echo "Checking web health endpoint at http://127.0.0.1:18080/health ..."
+	@curl -fsS --max-time 10 http://127.0.0.1:18080/health \
+		&& echo "  [PASS] web health endpoint reachable" \
+		|| echo "  [FAIL] web health endpoint not reachable"
+	@echo ""
+	@echo "kind-verify complete."
 
 operator-up: ## Start the operator container (internal enumeration, no exposed ports)
 	docker compose up -d operator

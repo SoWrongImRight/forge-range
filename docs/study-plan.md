@@ -75,28 +75,35 @@ A practical progression for using ForgeRange as an OSCP preparation lab. Each ph
 
 ---
 
-## Phase 4 — Kubernetes Terrain Layer
+## Phase 4 — V2 Kubernetes Pivot
 
-**Goal:** Add Kubernetes enumeration to your toolkit using the optional kind cluster.
+**Goal:** Add Kubernetes terrain skills to your toolkit using the optional `kind` cluster: pod foothold, cluster-internal service discovery, and service account enumeration.
 
 **Prerequisites:** Complete Phases 1–3. Install `kind` and `kubectl`.
 
 **Tasks:**
 
-- Run `make kind-up && make kind-load && kubectl apply -f kind/manifests/web.yaml`.
-- Enumerate the cluster: pods, services, configmaps.
-- Find the credentials stored in `forge-config` ConfigMap.
-- Identify the permissive security context in the web pod.
-- Access the web app at `http://127.0.0.1:30080` and repeat the web exploitation steps.
-- Read [kind/README.md](../kind/README.md) and [scenarios/06-kubernetes/README.md](../scenarios/06-kubernetes/README.md).
+- Run `make kind-up` to create the cluster, build images, and deploy Scenario 02.
+- Confirm the web app is reachable at `http://127.0.0.1:18080`.
+- Work through [scenarios/02-kubernetes-pivot/README.md](../scenarios/02-kubernetes-pivot/README.md) using only the hints section.
+- Capture all three V2 flags and submit them to Proctor (`http://127.0.0.1:8090`).
+- After completion, enumerate the cluster independently with `kubectl`: pods, services, configmaps, RBAC roles.
+- Explain aloud what the service account token grants access to and why it is scoped correctly.
+- Run `make kind-verify` to validate the deployment state.
 
-**OSCP skills:**
-- `kubectl` enumeration workflow
-- Understanding how pod security contexts affect privilege
-- Identifying credentials in cluster resources (ConfigMaps vs. Secrets)
-- Comparing container behavior across Docker and Kubernetes
+**Skills practiced:**
+- `kubectl` enumeration: pods, services, configmaps, RBAC
+- Pod-level RCE via OS command injection in a containerized app
+- Cluster-internal DNS resolution (`<service>.<namespace>.svc.cluster.local`)
+- Internal service discovery from a pod foothold
+- Mounted service account token location and format
+- Kubernetes API queries using `curl` with a bearer token and CA cert
+- Understanding ConfigMap vs. Secret security boundaries
+- Reading pod environment variables from inside the pod
 
-**Done when:** You can enumerate a kind cluster, identify misconfigurations, and explain what a ConfigMap is vs. a Secret.
+**OSCP context:** OSCP does not currently test Kubernetes, but pod enumeration, internal DNS, and service account discovery mirror real-world post-foothold enumeration patterns seen in cloud-hosted infrastructure.
+
+**Done when:** You can complete Scenario 02 from scratch, collect all three V2 flags, and explain what each stage taught you without consulting notes.
 
 ---
 

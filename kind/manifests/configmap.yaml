@@ -1,0 +1,19 @@
+---
+# INTENTIONAL MISCONFIG: discovery flag and internal service URL stored in a ConfigMap.
+# In production, flags belong in Secrets and internal URLs in service discovery — not ConfigMaps.
+# This is an intentional lab anti-pattern for enumeration practice.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forge-k8s-config
+  namespace: forge-k8s
+data:
+  internal_service_host: "forge-k8s-internal.forge-k8s.svc.cluster.local"
+  internal_service_port: "5000"
+  # INTENTIONAL: discovery flag accessible via service account API query
+  discovery_flag: "FLAG{k8s_service_account_discovery}"
+  operator_hint: >
+    The web pod's mounted service account token grants read access to ConfigMaps
+    in the forge-k8s namespace. Query:
+    GET https://kubernetes.default.svc/api/v1/namespaces/forge-k8s/configmaps/forge-k8s-config
+    using the token from /var/run/secrets/kubernetes.io/serviceaccount/token

@@ -24,7 +24,7 @@ All ports bind to `127.0.0.1` (loopback only). None are reachable from the LAN.
 | `127.0.0.1:8080` | `forge-web` | `8080` | HTTP | Intentionally exposed web target (attack surface) |
 | `127.0.0.1:2222` | `forge-privesc` | `22` | SSH | Privilege escalation host SSH access |
 | `127.0.0.1:8090` | `forge-proctor` | `8090` | HTTP | Local scoring UI — not a target, not intentionally vulnerable |
-| `127.0.0.1:30080` | kind NodePort | `8080` | HTTP | Optional Kubernetes scenario — requires `make kind-up` |
+| `127.0.0.1:18080` | kind NodePort 30180 → `forge-k8s-web` | `8080` | HTTP | V2 Kubernetes Pivot scenario web target — requires `make kind-up` |
 
 **Not exposed to host (internal only):**
 - `forge-internal:9090` — internal API, reachable only from containers on `public_net`
@@ -123,12 +123,44 @@ See [operator-mode.md](operator-mode.md) for workflow details and [kali-setup.md
 
 ---
 
-## Optional kind Topology
+## V2 Kubernetes Topology (optional — requires `make kind-up`)
 
 | Component | Exposure | Notes |
 |-----------|----------|-------|
-| `kind-forge-range` control-plane | `127.0.0.1:30080` via NodePort | Used for the Kubernetes scenario |
-| `forge-web` Kubernetes Service | NodePort `30080` | Mirrors the Docker Compose web target inside the cluster |
-| `forge-config` ConfigMap | cluster-internal | Intentionally stores credentials as plaintext for enumeration practice |
+| `kind-forge-range` control-plane | local Docker container | Two workers; NodePort 30180 → host port 18080 |
+| `forge-k8s-web` Service (NodePort) | `127.0.0.1:18080` | Scenario 02 entry point — command-injection vulnerable web app |
+| `forge-k8s-internal` Service (ClusterIP) | cluster-internal only | Not reachable from host; reachable from `forge-k8s-web` pod via RCE |
+| `forge-k8s-config` ConfigMap | cluster-internal | Intentional anti-pattern: discovery flag and internal service URL stored in ConfigMap |
+| `forge-k8s-web-sa` ServiceAccount | cluster-internal | Mounted into web pod; grants read access to pods/configmaps in `forge-k8s` only |
+| `forge-proctor` | `127.0.0.1:8090` | Not part of the attack path; scores V2 flags alongside V1 flags |
+
+### V2 Service Relationships
+
+| Source | Destination | Protocol / Port | Reason |
+|--------|-------------|----------------|--------|
+| Host (attacker) | `forge-k8s-web` | HTTP `:18080` | V2 entry point via kind NodePort |
+| `forge-k8s-web` pod (RCE) | `forge-k8s-internal` | HTTP `:5000` | Internal service discovery via cluster DNS |
+| `forge-k8s-web` pod (RCE) | Kubernetes API (`kubernetes.default.svc:443`) | HTTPS | Service account token enumeration |
+| Host | `forge-k8s-internal` | — | **No route** — ClusterIP only |
+
+### V2 Attack Flow
+
+```
+[Attacker host]
+      │
+      ├─ HTTP:18080 ──────────► forge-k8s-web pod (forge-k8s namespace)
+      │   Stage 1: /ping           │  FLAG{k8s_web_foothold} (env + /flag)
+      │   command injection         │
+      │                             ├─ Stage 3: HTTP:5000 (cluster DNS)
+      │                             │   forge-k8s-internal.forge-k8s.svc.cluster.local
+      │                             │   → FLAG{k8s_internal_service}
+      │                             │
+      │                             └─ Stage 4: HTTPS:443 (Kubernetes API)
+      │                                 kubernetes.default.svc
+      │                                 /api/v1/namespaces/forge-k8s/configmaps/forge-k8s-config
+      │                                 → FLAG{k8s_service_account_discovery}
+      │
+      └─ (no direct route) ──── forge-k8s-internal (ClusterIP — host cannot reach)
+```
 
 See [../kind/README.md](../kind/README.md) for setup and teardown instructions.

@@ -1,17 +1,35 @@
-# ForgeRange — Optional kind Kubernetes Layer
+# ForgeRange — Optional kind Kubernetes Layer (V2)
 
-The `kind` layer adds a local Kubernetes cluster so you can practice container and cluster enumeration skills alongside the Docker Compose targets. It is **optional** — the first full attack chain scenario runs entirely on Docker Compose and does not require kind.
+The `kind` layer adds a local Kubernetes cluster for **Scenario 02: Kubernetes Pivot**. It teaches OSCP-adjacent skills inside Kubernetes terrain: pod foothold, cluster-internal service discovery, and service account enumeration. It is **optional** — Scenario 01 runs entirely on Docker Compose and does not require kind.
 
 ---
 
-## Purpose
+## Architecture
 
-- Practice `kubectl` enumeration and pod inspection.
-- Find credentials intentionally stored in a ConfigMap (real-world anti-pattern).
-- Explore a deliberately permissive pod security context.
-- Understand how Kubernetes manifests map to the same vulnerable services you exploited in Docker Compose.
+```
+[Attacker host / laptop]
+      │
+      ├─ HTTP:18080 ──────────► forge-k8s-web pod       (namespace: forge-k8s)
+      │   command injection          │  FLAG{k8s_web_foothold}
+      │                              │
+      │                              ├─ HTTP:5000 (cluster DNS)
+      │                              │   forge-k8s-internal.forge-k8s.svc.cluster.local
+      │                              │   → FLAG{k8s_internal_service}
+      │                              │
+      │                              └─ HTTPS:443 (Kubernetes API)
+      │                                  kubernetes.default.svc
+      │                                  GET /api/v1/namespaces/forge-k8s/configmaps/forge-k8s-config
+      │                                  → FLAG{k8s_service_account_discovery}
+      │
+      └─ (no direct route) ──── forge-k8s-internal (ClusterIP — host cannot reach directly)
+```
 
-OSCP context: OSCP does not currently include Kubernetes targets, but container enumeration skills transfer directly. Understanding how pods expose ports, how secrets land in environment variables, and how security contexts affect privilege is increasingly relevant for post-OSCP and real engagements.
+| Component | Type | Exposure |
+|-----------|------|----------|
+| `forge-k8s-web` | NodePort 30180 → host:18080 | `127.0.0.1:18080` — loopback only |
+| `forge-k8s-internal` | ClusterIP | Cluster-internal only — not reachable from host |
+| `forge-k8s-config` ConfigMap | Cluster resource | Readable via mounted service account token |
+| `forge-k8s-web-sa` ServiceAccount | Cluster resource | Mounted into web pod; limited RBAC (pods + configmaps in `forge-k8s`) |
 
 ---
 
@@ -20,50 +38,42 @@ OSCP context: OSCP does not currently include Kubernetes targets, but container 
 - [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) installed and on `PATH`
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) installed and on `PATH`
 - Docker daemon running
-- The Docker Compose lab images already built (`make up` at least once, or `make reset-docker`)
+- The Docker Compose lab does not need to be running — kind is independent
 
 ---
 
 ## Commands
 
-### Bring up the cluster
+### Bring up the V2 scenario
 
 ```bash
 make kind-up
 ```
 
-This creates a `kind` cluster named `forge-range` with:
-- One control-plane node with NodePort `30080` mapped to `127.0.0.1:30080`
-- Two worker nodes
-
-### Load lab images into kind
-
-Before deploying the web manifest, load the local Docker image into kind's image store:
-
-```bash
-make kind-load
-```
-
-### Deploy the vulnerable web manifest
-
-```bash
-kubectl apply -f kind/manifests/web.yaml
-```
-
-This deploys:
-- A `forge-web` Deployment with intentionally permissive security context (`allowPrivilegeEscalation: true`, `runAsNonRoot: false`)
-- A NodePort Service exposing port `30080` on `127.0.0.1`
-- A ConfigMap (`forge-config`) with credentials stored as plaintext — an intentional anti-pattern for practice
+This single command:
+1. Creates the `forge-range` kind cluster (if not already running) using `kind/cluster.yaml`
+2. Builds the `forge-k8s-web` and `forge-k8s-internal` images from `targets/k8s-web/` and `targets/k8s-internal/`
+3. Loads both images into the kind cluster's image store
+4. Applies all manifests in order: namespace → rbac → configmap → web → internal-api
+5. Waits for both deployments to become Ready
+6. Prints the URL: `http://127.0.0.1:18080`
 
 ### Verify deployment
 
 ```bash
-kubectl get pods -A
-kubectl get svc
-kubectl get configmap forge-config -o yaml
+make kind-verify
 ```
 
-The web app will be reachable at `http://127.0.0.1:30080` once the pod is Running.
+Checks namespace, pods, services, and web health endpoint. Also useful after a restart to confirm the scenario is still running.
+
+### Quick manual checks
+
+```bash
+kubectl get pods -n forge-k8s
+kubectl get svc -n forge-k8s
+kubectl get configmap forge-k8s-config -n forge-k8s -o yaml
+curl -fsS http://127.0.0.1:18080/health
+```
 
 ### Tear down the cluster
 
@@ -71,86 +81,111 @@ The web app will be reachable at `http://127.0.0.1:30080` once the pod is Runnin
 make kind-down
 ```
 
-This deletes the cluster entirely. Run `make kind-up` again to recreate it from scratch.
+Deletes the cluster entirely. Run `make kind-up` to recreate from scratch.
+
+### Full reset
+
+```bash
+make reset-kind    # destroy kind cluster
+make kind-up       # recreate from scratch
+```
 
 ---
 
-## Network Topology
+## Manifests
 
-| Exposure | Bind | Notes |
-|----------|------|-------|
-| `127.0.0.1:30080` | NodePort on control-plane | Loopback only; mapped in `kind/cluster.yaml` |
-| All other cluster traffic | cluster-internal | Not exposed to host |
+| File | Contents |
+|------|----------|
+| `kind/manifests/namespace.yaml` | `forge-k8s` namespace |
+| `kind/manifests/rbac.yaml` | ServiceAccount, Role (limited), RoleBinding |
+| `kind/manifests/configmap.yaml` | `forge-k8s-config` — internal service URL + discovery flag |
+| `kind/manifests/web.yaml` | `forge-k8s-web` Deployment + NodePort Service |
+| `kind/manifests/internal-api.yaml` | `forge-k8s-internal` Deployment + ClusterIP Service |
 
 ---
 
-## Operator Pod — Internal Enumeration Inside the Cluster
+## Safety Constraints
 
-The same internal-enumeration workflow available in Docker Compose (`make operator-shell`) has a Kubernetes equivalent: an ephemeral `netshoot` pod. Launch it with:
+| Constraint | Implementation |
+|------------|---------------|
+| No privileged pods | `securityContext.privileged: false` on all containers |
+| No hostNetwork | No `hostNetwork: true` in any pod spec |
+| No Docker socket | No `/var/run/docker.sock` mounts |
+| No hostPath mounts | No `hostPath` volumes in any manifest |
+| No cluster-admin RBAC | `forge-k8s-reader` Role limited to `pods` + `configmaps` in `forge-k8s` namespace only |
+| Loopback-only NodePort | `listenAddress: "127.0.0.1"` in `kind/cluster.yaml` extraPortMappings |
+| Internal service not exposed to host | `forge-k8s-internal` uses `ClusterIP` type |
+| Proctor not in attack path | Proctor runs in Docker Compose, separate from the kind cluster |
+
+---
+
+## Operator Pod — Internal Cluster Enumeration
+
+To practice enumeration from inside the cluster (post-foothold simulation), launch an ephemeral netshoot pod:
 
 ```bash
 kubectl run forge-operator \
   --image=nicolaka/netshoot \
   --restart=Never \
-  -it --rm -- bash
+  -it --rm \
+  -n forge-k8s \
+  -- bash
 ```
 
-The `--rm` flag ensures the pod is deleted when you exit the shell. There is no persistent pod left behind.
+The `--rm` flag deletes the pod on exit. There is no persistent pod left behind.
 
 ### Inside the operator pod
 
 ```bash
-# DNS resolution
-nslookup forge-web
-nslookup forge-internal
+# DNS — verify cluster DNS for both services
+nslookup forge-k8s-web.forge-k8s.svc.cluster.local
+nslookup forge-k8s-internal.forge-k8s.svc.cluster.local
 
-# HTTP reachability (service names are Kubernetes Service names)
-curl http://forge-web
-
-# Port scan cluster-internal services
-nmap forge-web
+# HTTP — reach internal service (not reachable from host)
+curl http://forge-k8s-internal.forge-k8s.svc.cluster.local:5000/health
+curl http://forge-k8s-internal.forge-k8s.svc.cluster.local:5000/secret
 ```
 
-### Safety rules for the operator pod
-
-| Constraint | Why |
-|------------|-----|
-| No `hostNetwork: true` | Prevents the pod from binding to the node's host network |
-| No `privileged: true` | Prevents container breakout |
-| Ephemeral (`--rm`) | No persistent pod; no attack surface left after session |
-| No NodePort for operator | Internal enumeration only; nothing published outside the cluster |
-
-The operator pod is strictly internal. It does not change the cluster's external exposure.
+The operator pod uses the default service account (no special RBAC). It does not have the same API access as the web pod's `forge-k8s-web-sa`. Use it for network enumeration, not API queries.
 
 ---
 
-## Scenario 06 — Kubernetes Enumeration
+## Troubleshooting
 
-See [scenarios/06-kubernetes/README.md](../scenarios/06-kubernetes/README.md) for the guided exercise using this cluster.
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| `make kind-up` fails at cluster creation | kind not installed or Docker not running | Install kind; run `docker info` to check daemon |
+| `http://127.0.0.1:18080` unreachable | Pod not yet Ready, or cluster creation failed | Wait 30s and retry; check `kubectl get pods -n forge-k8s` |
+| Image pull fails in pod | Image not loaded into kind | Re-run `make kind-up` — it rebuilds and reloads images |
+| `kubectl: command not found` | kubectl not installed | Install kubectl |
+| Port 18080 already in use | Another process using the port | `lsof -i :18080` to identify; kill or stop it |
+| `kind cluster forge-range already exists` | Previous cluster still running | `make kind-down` first, or let kind-up skip creation |
+
+---
+
+## Reset Process
+
+Clean reset for a fresh scenario run:
+
+```bash
+make reset-kind    # deletes the cluster and all state
+make kind-up       # recreates cluster, builds images, deploys scenario
+make kind-verify   # confirm clean state
+```
+
+The Docker Compose lab continues running independently. Resetting kind does not affect `forge-web`, `forge-internal`, `forge-db`, `forge-privesc`, `forge-proctor`, or `forge-operator`.
+
+---
+
+## Scenario
+
+See [scenarios/02-kubernetes-pivot/README.md](../scenarios/02-kubernetes-pivot/README.md) for the full guided exercise.
 
 Skills covered:
-- `kubectl get` enumeration (pods, services, configmaps, secrets)
-- Finding credentials in ConfigMaps
-- Inspecting pod security context for privilege escalation paths
-- Comparing cluster-internal vs. host-exposed ports
-
----
-
-## Cleanup
-
-To reset the kind cluster to a clean state:
-
-```bash
-make kind-down
-make kind-up
-make kind-load
-kubectl apply -f kind/manifests/web.yaml
-```
-
-To remove kind entirely (does not affect Docker Compose lab):
-
-```bash
-make kind-down
-```
-
-The Docker Compose lab continues running independently of the kind cluster state.
+- Pod-level OS command injection
+- `kubectl` enumeration: pods, services, configmaps, RBAC
+- Cluster-internal DNS resolution
+- Internal service discovery from a pod RCE foothold
+- Locating the mounted service account token
+- Kubernetes API queries using a bearer token and the pod's CA certificate
+- Understanding ConfigMap vs. Secret security boundaries
